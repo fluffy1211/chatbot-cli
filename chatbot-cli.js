@@ -6,6 +6,10 @@ function question(prompt) {
   return new Promise(resolve => rl.question(prompt, resolve));
 }
 
+let history = [
+    { role: 'system', content: 'Tu es un assistant utile et amical.' }
+]
+
 const currentProvider = [
     {
         name: 'Mistral',
@@ -27,7 +31,13 @@ const currentProvider = [
     }
 ]
 
-async function askMistral(userMessage) {
+async function chat(userMessage) {
+    history.push({ role: 'user', content: userMessage });
+
+    if (userMessage.startsWith('/history')) {
+        printHistory();
+        return 'Voici l\'historique de la conversation.';
+    }
 
   const response = await fetch(currentProvider[0].url, {
     method: 'POST',
@@ -37,7 +47,7 @@ async function askMistral(userMessage) {
     },
     body: JSON.stringify({
       model: currentProvider[0].model,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: history,
       temperature: 0.7,
     })
   });
@@ -52,6 +62,20 @@ async function askMistral(userMessage) {
 
 while (true) {
   const input = await question('Vous : ');
-  const reply = await askMistral(input);
+  const reply = await chat(input);
   console.log(`IA : ${reply}\n`);
+  history.push({ role: 'assistant', content: reply });
+}
+
+function printHistory() {
+    if (history.length === 0) {
+        console.log('Aucun message dans l\'historique.');
+        return;
+    }
+    
+    console.log('--- Historique de la conversation ---');
+    history.forEach((message, index) => {
+        console.log(`${index + 1}. [${message.role}] ${message.content}`);
+    });
+    console.log('-----------------------------------\n');
 }
