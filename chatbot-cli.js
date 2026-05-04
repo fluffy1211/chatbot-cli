@@ -34,15 +34,16 @@ let Providers = [
 ]
 
 let currentProvider = {
-    name: 'Mistral',
-    url: 'https://api.mistral.ai/v1/chat/completions',
-    key: process.env.MISTRAL_API_KEY,
-    model: 'mistral-small-latest',
+    name: 'Groq',
+        url: 'https://api.groq.com/openai/v1/chat/completions',
+        key: process.env.GROQ_API_KEY,
+        model: 'llama-3.3-70b-versatile',
 }
 
 async function chatStream(userMessage) {
-    if (history.length > MAX_HISTORY) {
-        await compressHistory();
+    if (userMessage.startsWith('/resume')) {
+        await resume();
+        return;
     }
 
     if (userMessage.startsWith('/history')) {
@@ -115,6 +116,10 @@ async function chatStream(userMessage) {
 
   history.push({ role: 'assistant', content: fullContent });
 
+  if (history.length > MAX_HISTORY) {
+      await compressHistory();
+  }
+
   return fullContent;
 }
 
@@ -141,7 +146,7 @@ function printHistory() {
             console.log(`IA : ${entry.content}`);
         }
     });
-    
+
     console.log('\n\n--- Fin de l\'historique ---\n\n');
 }
 
@@ -184,7 +189,35 @@ async function compressHistory() {
 
     history.splice(1, history.length - 1, { role: 'system', content: `Résumé : ${summary}` });
 
-    console.log('Contexte compressé pour économiser de la mémoire.\n' + `${history.length}` + ' messages dans l\'historique.\n');
+    console.log('\nContexte compressé pour économiser de la mémoire.\n' + `${history.length}` + ' messages dans l\'historique.\n');
 }
 
+async function resume() {
+    const conversationStr = history.slice(1).map(m => `${m.role}: ${m.content}`).join('\n');
 
+    const summaryResponse = await fetch(currentProvider.url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentProvider.key}`
+        },
+        body: JSON.stringify({
+            model: currentProvider.model,
+            messages: [
+                { role: 'system', content: 'Tu es un assistant qui résume les conversations, resume en bullet point, 5 max, chaque bullet commence par un point' },
+                { role: 'user', content: `Tu es un assistant qui résume les conversations, resume en bullet point, 5 max, chaque bullet commence par un point\n\n${conversationStr}` }
+            ],
+            temperature: 0.3,
+        })
+    });
+
+    if (!summaryResponse.ok) {
+        console.error(`Erreur lors de la compression de l'historique : HTTP ${summaryResponse.status}`);
+        return;
+    }
+
+    const summaryData = await summaryResponse.json();
+    const summary = summaryData.choices[0].message.content.trim();
+
+    console.log('\nRésumé de la conversation :\n' + summary + '\n');
+}
